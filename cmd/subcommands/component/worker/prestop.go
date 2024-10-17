@@ -2,10 +2,12 @@ package worker
 
 import (
 	"context"
+	"os"
 
 	"github.com/spf13/cobra"
 
 	"lunchpail.io/cmd/options"
+	"lunchpail.io/pkg/fe/transformer/api"
 	"lunchpail.io/pkg/runtime/worker"
 )
 
@@ -16,26 +18,33 @@ func PreStop() *cobra.Command {
 		Long:  "Mark this worker as dead",
 	}
 
-	bucket := ""
+	var bucket string
 	cmd.Flags().StringVar(&bucket, "bucket", "", "Which S3 bucket to use")
 	cmd.MarkFlagRequired("bucket")
 
-	alive := ""
-	cmd.Flags().StringVar(&alive, "alive", "", "Where to place our alive file")
-	cmd.MarkFlagRequired("alive")
+	var run string
+	cmd.Flags().StringVar(&run, "run", "", "Which run are we part of")
+	cmd.MarkFlagRequired("run")
 
-	dead := ""
-	cmd.Flags().StringVar(&dead, "dead", "", "Where to place our dead file")
-	cmd.MarkFlagRequired("dead")
+	var step int
+	cmd.Flags().IntVar(&step, "step", 0, "Which step are we part of")
+	cmd.MarkFlagRequired("step")
+
+	var pool string
+	cmd.Flags().StringVar(&pool, "pool", "", "Which worker pool are we part of")
+	cmd.MarkFlagRequired("pool")
 
 	logOpts := options.AddLogOptions(cmd)
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		return worker.PreStop(context.Background(), worker.Options{
 			LogOptions: *logOpts,
-			Queue: worker.Queue{
-				Bucket: bucket,
-				Dead:   dead,
+			PathArgs: api.PathArgs{
+				Bucket:       bucket,
+				RunName: run,
+				Step: step,
+				PoolName: pool,
+				WorkerName: os.Getenv("LUNCHPAIL_POD_NAME"),
 			},
 		})
 	}

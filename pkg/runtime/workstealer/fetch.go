@@ -163,9 +163,10 @@ func (c client) fetchModel() Model {
 	workersLookup := make(map[string]Worker)
 
 	// we will strip off the queue path prefix below
-	l := len(c.Spec.ListenPrefix + "/")
+	prefix := c.PathArgs.ListenPrefix() 
+	l := len(prefix + "/")
 
-	for o := range c.s3.ListObjects(c.Spec.Bucket, c.Spec.ListenPrefix, true) {
+	for o := range c.s3.ListObjects(c.PathArgs.Bucket, prefix, true) {
 		if len(o.Key) > l {
 			if c.LogOptions.Debug {
 				fmt.Fprintf(os.Stderr, "Updating model for: %s\n", o.Key[l:])

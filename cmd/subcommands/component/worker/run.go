@@ -3,11 +3,13 @@ package worker
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
 	"lunchpail.io/cmd/options"
 	"lunchpail.io/pkg/runtime/worker"
+	"lunchpail.io/pkg/fe/transformer/api"
 )
 
 func Run() *cobra.Command {
@@ -22,13 +24,17 @@ func Run() *cobra.Command {
 	cmd.Flags().StringVar(&bucket, "bucket", "", "Which S3 bucket to use")
 	cmd.MarkFlagRequired("bucket")
 
-	var alive string
-	cmd.Flags().StringVar(&alive, "alive", "", "Where to place our alive file")
-	cmd.MarkFlagRequired("alive")
+	var run string
+	cmd.Flags().StringVar(&run, "run", "", "Which run are we part of")
+	cmd.MarkFlagRequired("run")
 
-	var listenPrefix string
-	cmd.Flags().StringVar(&listenPrefix, "listen-prefix", "", "Which S3 listen-prefix to use")
-	cmd.MarkFlagRequired("listen-prefix")
+	var step int
+	cmd.Flags().IntVar(&step, "step", 0, "Which step are we part of")
+	cmd.MarkFlagRequired("step")
+
+	var pool string
+	cmd.Flags().StringVar(&pool, "pool", "", "Which worker pool are we part of")
+	cmd.MarkFlagRequired("pool")
 
 	var pollingInterval int
 	cmd.Flags().IntVar(&pollingInterval, "polling-interval", 3, "If polling is employed, the interval between probes")
@@ -47,10 +53,12 @@ func Run() *cobra.Command {
 			StartupDelay:    startupDelay,
 			PollingInterval: pollingInterval,
 			LogOptions:      *logOpts,
-			Queue: worker.Queue{
-				ListenPrefix: listenPrefix,
+			PathArgs: api.PathArgs{
 				Bucket:       bucket,
-				Alive:        alive,
+				RunName: run,
+				Step: step,
+				PoolName: pool,
+				WorkerName: os.Getenv("LUNCHPAIL_POD_NAME"),
 			},
 		})
 	}

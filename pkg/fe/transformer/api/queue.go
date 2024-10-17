@@ -1,16 +1,90 @@
 package api
 
 import (
+	"bytes"
 	"fmt"
 	"path/filepath"
 	"strings"
+	"text/template"
 
 	"lunchpail.io/pkg/fe/linker/queue"
 )
 
+// i.e. "/run/{{.RunName}}/step/{{.Step}}"
+func (q PathArgs) ListenPrefix() string {
+	A := strings.Split(Unassigned, "/")
+	return filepath.Join(A[0:5]...)
+}
+
+const (
+	Unassigned = "/run/{{.RunName}}/step/{{.Step}}/unassigned"
+
+	AssignedAndPending = "/run/{{.RunName}}/step/{{.Step}}/inbox/pool/{{.PoolName}}/worker/{{.WorkerName}}/{{.Task}}"
+	AssignedAndProcessing = "/run/{{.RunName}}/step/{{.Step}}/processing/pool/{{.PoolName}}/worker/{{.WorkerName}}/{{.Task}}"
+	AssignedAndFinished = "/run/{{.RunName}}/step/{{.Step+1}}/unassigned" // i.e. step 1's output is step 2's input
+
+	FinishedWithCode = "/run/{{.RunName}}/step/{{.Step}}/codes/pool/{{.PoolName}}/worker/{{.WorkerName}}/{{.Task}}"
+	FinishedWithStdout = "/run/{{.RunName}}/step/{{.Step}}/stdout/pool/{{.PoolName}}/worker/{{.WorkerName}}/{{.Task}}"
+	FinishedWithStderr = "/run/{{.RunName}}/step/{{.Step}}/stderr/pool/{{.PoolName}}/worker/{{.WorkerName}}/{{.Task}}"
+	FinishedWithSucceeded = "/run/{{.RunName}}/step/{{.Step}}/succeeded/pool/{{.PoolName}}/worker/{{.WorkerName}}/{{.Task}}"
+	FinishedWithFailed = "/run/{{.RunName}}/step/{{.Step}}/failed/pool/{{.PoolName}}/worker/{{.WorkerName}}/{{.Task}}"
+
+	WorkerKillFile = "/run/{{.RunName}}/step/{{.Step}}/killfiles/pool/{{.PoolName}}/worker/{{.WorkerName}}"
+	
+	AllDoneMarker = "/run/{{.RunName}}/step/{{.Step}}/markers/alldone"
+	WorkerAliveMarker = "/run/{{.RunName}}/step/{{.Step}}/markers/alive/pool/{{.PoolName}}/worker/{{.WorkerName}}"
+	WorkerDeadMarker = "/run/{{.RunName}}/step/{{.Step}}/markers/dead/pool/{{.PoolName}}/worker/{{.WorkerName}}"
+)
+
+type PathArgs struct {
+	Bucket string
+	RunName string
+	Step int
+	PoolName string
+	WorkerName string
+	Task string
+}
+
+func (q PathArgs) ForPool(name string) PathArgs {
+	q.PoolName = name
+	return q
+}
+
+func (q PathArgs) ForWorker(name string) PathArgs {
+	q.WorkerName = name
+	return q
+}
+
+func (q PathArgs) ForTask(name string) PathArgs {
+	q.Task = name
+	return q
+}
+
+func (q PathArgs) Template(path string) (string, error) {
+	tmpl, err := template.New("tmp").Parse(path)
+	if err != nil {
+		return "", err
+	}
+
+	var b bytes.Buffer
+	if err := tmpl.Execute(&b, q); err != nil {
+		return "", err
+	}
+
+	return b.String(), nil
+}
+
+func (q PathArgs) TemplateP(path string) string {
+	s, err := q.Template(path)
+	if err != nil {
+		return ""
+	}
+	return s
+}
+
 // Path in s3 to store the queue for the given run
 func QueuePrefixPath0(queueSpec queue.Spec, runname string) string {
-	return filepath.Join("lunchpail", runname)
+	return filepath.Join("lunchpail", "runs", runname)
 }
 
 // Path in s3 to store the queue for the given run
@@ -56,115 +130,4 @@ func QueuePrefixPathForWorker(queueSpec queue.Spec, runname, poolName string) st
 		queueSpec.Bucket,
 		QueuePrefixPathForWorker0(queueSpec, runname, poolName),
 	)
-}
-
-func UnassignedPath(queueSpec queue.Spec, runname string) string {
-	return filepath.Join(QueuePrefixPath0(queueSpec, runname), "inbox")
-}
-
-func OutboxPath(queueSpec queue.Spec, runname string) string {
-	return filepath.Join(QueuePrefixPath0(queueSpec, runname), "outbox")
-}
-
-func FinishedPath(queueSpec queue.Spec, runname string) string {
-	return filepath.Join(QueuePrefixPath0(queueSpec, runname), "finished")
-}
-
-func WorkerKillfilePathBase(queueSpec queue.Spec, runname string) string {
-	return WorkerInboxPathBase(queueSpec, runname)
-}
-
-func WorkerKillfile(base, worker string) string {
-	return filepath.Join(base, worker, "kill")
-}
-
-func WorkerInboxPathBase(queueSpec queue.Spec, runname string) string {
-	return filepath.Join(QueuePrefixPath0(queueSpec, runname), "queues")
-}
-
-func WorkerInbox(base, worker, task string) string {
-	return filepath.Join(base, worker, "inbox", task)
-}
-
-// for Worker
-func Inbox(base string) string {
-	return filepath.Join(base, "inbox")
-}
-
-// for Worker
-func InboxTask(base, task string) string {
-	return filepath.Join(Inbox(base), task)
-}
-
-func WorkerProcessingPathBase(queueSpec queue.Spec, runname string) string {
-	return WorkerInboxPathBase(queueSpec, runname)
-}
-
-func WorkerProcessing(base, worker, task string) string {
-	return filepath.Join(base, worker, "processing", task)
-}
-
-// for Worker
-func Processing(base string) string {
-	return filepath.Join(base, "processing")
-}
-
-// for Worker
-func ProcessingTask(base, task string) string {
-	return filepath.Join(Processing(base), task)
-}
-
-func WorkerOutboxPathBase(queueSpec queue.Spec, runname string) string {
-	return WorkerInboxPathBase(queueSpec, runname)
-}
-
-func WorkerOutbox(base, worker, task string) string {
-	return filepath.Join(base, worker, "outbox", task)
-}
-
-// for Worker
-func Outbox(base string) string {
-	return filepath.Join(base, "outbox")
-}
-
-// for Worker
-func OutboxTask(base, task string) string {
-	return filepath.Join(Outbox(base), task)
-}
-
-// for Worker
-func ExitCodeTask(base, task string) string {
-	return filepath.Join(Outbox(base), task+".code")
-}
-
-// for Worker
-func SucceededTask(base, task string) string {
-	return filepath.Join(Outbox(base), task+".succeeded")
-}
-
-// for Worker
-func FailedTask(base, task string) string {
-	return filepath.Join(Outbox(base), task+".failed")
-}
-
-// for Worker
-func StdoutTask(base, task string) string {
-	return filepath.Join(Outbox(base), task+".stdout")
-}
-
-// for Worker
-func StderrTask(base, task string) string {
-	return filepath.Join(Outbox(base), task+".stderr")
-}
-
-func WorkerAlive(queueSpec queue.Spec, runname, poolname string) string {
-	return WorkerInbox(WorkerInboxPathBase(queueSpec, runname), filepath.Join(poolname, "$LUNCHPAIL_POD_NAME"), ".alive")
-}
-
-func WorkerDead(queueSpec queue.Spec, runname, poolname string) string {
-	return WorkerInbox(WorkerInboxPathBase(queueSpec, runname), filepath.Join(poolname, "$LUNCHPAIL_POD_NAME"), ".dead")
-}
-
-func AllDone(queueSpec queue.Spec, runname string) string {
-	return filepath.Join(QueuePrefixPath0(queueSpec, runname), "alldone")
 }

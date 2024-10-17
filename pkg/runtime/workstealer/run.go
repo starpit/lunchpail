@@ -8,24 +8,10 @@ import (
 	"time"
 
 	"lunchpail.io/pkg/build"
+	"lunchpail.io/pkg/fe/transformer/api"
 	q "lunchpail.io/pkg/runtime/queue"
 	"lunchpail.io/pkg/util"
 )
-
-// Specification of where we should find and store objects
-type Spec struct {
-	RunName          string
-	Bucket           string
-	ListenPrefix     string
-	Unassigned       string
-	Outbox           string
-	Finished         string
-	AllDone          string
-	WorkerInbox      string
-	WorkerProcessing string
-	WorkerOutbox     string
-	WorkerKillfile   string
-}
 
 type Options struct {
 	PollingInterval int
@@ -34,7 +20,7 @@ type Options struct {
 
 type client struct {
 	s3 q.S3Client
-	Spec
+	api.PathArgs
 	build.LogOptions
 }
 
@@ -44,7 +30,7 @@ func printenv() {
 	}
 }
 
-func Run(ctx context.Context, spec Spec, opts Options) error {
+func Run(ctx context.Context, spec api.PathArgs, opts Options) error {
 	s3, err := q.NewS3Client(ctx)
 	if err != nil {
 		return err
@@ -53,7 +39,7 @@ func Run(ctx context.Context, spec Spec, opts Options) error {
 
 	fmt.Fprintln(os.Stderr, "Workstealer starting")
 	if opts.Verbose {
-		fmt.Fprintf(os.Stderr, "Spec: %v\n", spec)
+		fmt.Fprintf(os.Stderr, "PathArgs: %v\n", spec)
 		printenv()
 	}
 
@@ -70,7 +56,7 @@ func Run(ctx context.Context, spec Spec, opts Options) error {
 
 	// Drop a final breadcrumb indicating we are ready to tear
 	// down all associated resources
-	if err := s3.Touch(c.Spec.Bucket, c.Spec.AllDone); err != nil {
+	if err := s3.Touch(c.PathArgs.Bucket, c.PathArgs.TemplateP(api.AllDoneMarker)); err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to touch AllDone file\n%v\n", err)
 	}
 
@@ -81,8 +67,8 @@ func Run(ctx context.Context, spec Spec, opts Options) error {
 }
 
 func run(ctx context.Context, c client, opts Options) error {
-	objs, errs := c.s3.Listen(c.Spec.Bucket, c.Spec.ListenPrefix, "", true)
-	defer c.s3.StopListening(c.Spec.Bucket)
+	objs, errs := c.s3.Listen(c.PathArgs.Bucket, c.PathArgs.ListenPrefix(), "", true)
+	defer c.s3.StopListening(c.PathArgs.Bucket)
 
 	done := false
 	for !done {

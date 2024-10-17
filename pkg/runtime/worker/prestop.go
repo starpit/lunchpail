@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"lunchpail.io/pkg/runtime/queue"
+	"lunchpail.io/pkg/fe/transformer/api"
 )
 
 func PreStop(ctx context.Context, opts Options) error {
@@ -18,8 +19,8 @@ func PreStop(ctx context.Context, opts Options) error {
 		fmt.Println("Marking worker as done...")
 	}
 
-	client.Rm(opts.Bucket, opts.Alive)
-	client.Touch(opts.Bucket, opts.Dead)
+	client.Rm(opts.PathArgs.Bucket, opts.PathArgs.TemplateP(api.WorkerAliveMarker))
+	client.Touch(opts.PathArgs.Bucket, opts.PathArgs.TemplateP(api.WorkerDeadMarker))
 
 	if opts.LogOptions.Verbose {
 		fmt.Printf("This worker is shutting down %s\n", os.Getenv("LUNCHPAIL_POD_NAME"))
